@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Admin Panel — User Verifications</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+.card {
+    background: #fff;
+    margin-top: 50px;
+    padding: 30px 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    width: 450px;
+    text-align: center;
+}
+h1,h2 { color: #2e86de; margin-bottom: 25px; }
+input[type=text], input[type=email], input[type=password] {
+    width: 90%;
+    padding: 12px 15px;
+    margin-bottom: 18px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+}
+input:focus { border-color: #2e86de; box-shadow: 0 0 8px rgba(46, 134, 222, 0.3); outline: none; }
+button { padding: 12px 20px; border-radius: 8px; border: none; background: #2e86de; color: #fff; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.3s; }
+button:hover { background: #2161a3; }
+.muted { color: #666; font-size: 13px; margin-top: 12px; }
+.user-card { background: #f9f9f9; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: left; border: 1px solid #ddd; }
+.user-actions { margin-top: 8px; display: flex; gap: 6px; }
+.approve-btn { background: #2ecc71; color: #fff; padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; }
+.reject-btn { background: #e74c3c; color: #fff; padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; }
+.tabs { display: flex; gap: 5px; justify-content: center; margin-bottom: 15px; }
+.tab-btn { flex: 1; padding: 10px; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; }
+.tab-active { background: #2e86de; color: #fff; }
+.tab-inactive { background: #ddd; color: #333; }
+#searchInput { width: 90%; padding: 8px 10px; margin-bottom: 15px; border-radius:6px; border:1px solid #ccc; }
+</style>
+</head>
+
+<body>
+<div id="authCard" class="card">
+    <h1>Admin Login</h1>
+    <input id="email" type="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+    <button id="btnSignIn">Sign In</button>
+    <p id="authMsg" class="muted"></p>
+</div>
+
+<div id="panel" class="card" hidden>
+    <h2>User Management</h2>
+    <div class="tabs">
+        <button id="tabPending" class="tab-btn tab-active">Pending</button>
+        <button id="tabRejected" class="tab-btn tab-inactive">Rejected</button>
+        <button id="tabApproved" class="tab-btn tab-inactive">Approved</button>
+    </div>
+    <input id="searchInput" type="text" placeholder="Search by name..." />
+    <div id="userList">Loading users...</div>
+    <button id="btnSignOut" style="margin-top:12px;">Sign Out</button>
+</div>
+
+<template id="userCardTpl">
+    <div class="user-card">
+        <div><b>Name:</b> <span class="user-name"></span></div>
+        <div><b>Email:</b> <span class="user-email"></span></div>
+        <div><b>Role:</b> <span class="user-role"></span></div>
+        <div><b>License Number:</b> <span class="license-number"></span></div>
+        <div class="user-actions" style="margin-top:10px;">
+            <button class="approve-btn">Approve</button>
+            <button class="reject-btn">Reject</button>
+        </div>
+    </div>
+</template>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBOpj1rmLJc7zIyFg5rvuIVShd3wT1i5kQ",
+    authDomain: "pineapp-s3g2.firebaseapp.com",
+    projectId: "pineapp-s3g2",
+    storageBucket: "pineapp-s3g2.firebasestorage.app",
+    messagingSenderId: "775232763121",
+    appId: "1:775232763121:web:a7b8b08a4ca6f38e912550",
+    measurementId: "G-RCJYQ0GXVM"
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const authCard = document.getElementById('authCard');
+const panel = document.getElementById('panel');
+const btnSignIn = document.getElementById('btnSignIn');
+const btnSignOut = document.getElementById('btnSignOut');
+const authMsg = document.getElementById('authMsg');
+const userList = document.getElementById('userList');
+const userTpl = document.getElementById('userCardTpl');
+const searchInput = document.getElementById('searchInput');
+
+const tabPending = document.getElementById('tabPending');
+const tabRejected = document.getElementById('tabRejected');
+const tabApproved = document.getElementById('tabApproved');
+
+const ADMIN_EMAIL = "isaaclim2180@gmail.com";
+let currentTab = 'pending';
+let allUsers = [];
+
+// LOGIN
+btnSignIn.addEventListener('click', async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    authMsg.textContent = '';
+    authMsg.style.color = '#666';
+
+    if (!email || !password) {
+        authMsg.style.color = 'red';
+        authMsg.textContent = 'Error';
+        return;
+    }
+
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+        if (email !== ADMIN_EMAIL) {
+            await auth.signOut();
+            authMsg.style.color = 'red';
+            authMsg.textContent = 'Error';
+            return;
+        }
+        authCard.hidden = true;
+        panel.hidden = false;
+        loadUsers(currentTab);
+    } catch (e) {
+        authMsg.style.color = 'red';
+        authMsg.textContent = 'Error';
+    }
+});
+
+// SIGN OUT
+btnSignOut.addEventListener('click', () => {
+    auth.signOut();
+    panel.hidden = true;
+    authCard.hidden = false;
+    document.getElementById('email').value = '';
+    document.getElementById('password').value = '';
+    authMsg.textContent = '';
+    searchInput.value = '';
+});
+
+// TABS
+tabPending.addEventListener('click', () => switchTab('pending'));
+tabRejected.addEventListener('click', () => switchTab('rejected'));
+tabApproved.addEventListener('click', () => switchTab('approved'));
+
+function switchTab(tab) {
+    currentTab = tab;
+    tabPending.className = tab==='pending'?'tab-btn tab-active':'tab-btn tab-inactive';
+    tabRejected.className = tab==='rejected'?'tab-btn tab-active':'tab-btn tab-inactive';
+    tabApproved.className = tab==='approved'?'tab-btn tab-active':'tab-btn tab-inactive';
+    searchInput.value = '';
+    loadUsers(tab);
+}
+
+// SEARCH
+searchInput.addEventListener('input', () => {
+    const query = searchInput.value.toLowerCase();
+    const filtered = allUsers.filter(u => u.name.toLowerCase().includes(query));
+    renderUsers(filtered);
+});
+
+// LOAD USERS
+async function loadUsers(status) {
+    userList.innerHTML = 'Loading users...';
+    try {
+        const snapshot = await db.collection('users').where('status','==',status).get();
+        if (snapshot.empty) {
+            userList.innerHTML = `No ${status} users.`;
+            allUsers = [];
+            return;
+        }
+        allUsers = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+        renderUsers(allUsers);
+    } catch(e) {
+        console.error(e);
+        userList.innerHTML = 'Error loading users!';
+    }
+}
+
+// RENDER USERS
+function renderUsers(users) {
+    userList.innerHTML = '';
+    if(users.length === 0){
+        userList.innerHTML = 'No users found.';
+        return;
+    }
+    users.forEach(data => {
+        const node = userTpl.content.cloneNode(true);
+        node.querySelector('.user-name').textContent = data.name || '';
+        node.querySelector('.user-role').textContent = data.role || '';
+        node.querySelector('.user-email').textContent = data.email || '';
+        node.querySelector('.license-number').textContent = data.license_number || '—';
+
+        const approveBtn = node.querySelector('.approve-btn');
+        const rejectBtn = node.querySelector('.reject-btn');
+
+        if(currentTab === 'approved'){
+            approveBtn.textContent = 'Keep Approved';
+            approveBtn.disabled = true;
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.addEventListener('click',()=>handleDecision(data.id,'rejected'));
+        } else if(currentTab === 'rejected'){
+            approveBtn.textContent = 'Approve';
+            approveBtn.addEventListener('click',()=>handleDecision(data.id,'approved'));
+            rejectBtn.textContent = 'Keep Rejected';
+            rejectBtn.disabled = true;
+        } else { // pending
+            approveBtn.textContent = 'Approve';
+            rejectBtn.textContent = 'Reject';
+            approveBtn.addEventListener('click',()=>handleDecision(data.id,'approved'));
+            rejectBtn.addEventListener('click',()=>handleDecision(data.id,'rejected'));
+        }
+
+        userList.appendChild(node);
+    });
+}
+
+// HANDLE DECISION
+async function handleDecision(userDocId, decision){
+    if(!confirm(`Are you sure you want to ${decision} this user?`)) return;
+    try{
+        await db.collection('users').doc(userDocId).update({
+            status: decision,
+            verified_by: auth.currentUser.email,
+            verified_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert(`User ${decision} successfully.`);
+        loadUsers(currentTab);
+    }catch(e){
+        console.error(e);
+        alert('Failed');
+    }
+}
+</script>
+</body>
+</html>
