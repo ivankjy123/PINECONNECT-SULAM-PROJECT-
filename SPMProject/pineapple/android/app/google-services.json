@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "775232763121",
+    "project_id": "pineapp-s3g2",
+    "storage_bucket": "pineapp-s3g2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:775232763121:android:fea68978cb46fabc912550",
+        "android_client_info": {
+          "package_name": "com.example.pineapple"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrwPw5ZOCnpZoL8kAkP_9XxSZgp0vm2ho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
